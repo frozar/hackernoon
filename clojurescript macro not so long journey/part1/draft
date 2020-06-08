@@ -1,0 +1,58 @@
+
+
+Sur le 1er article :
+
+credit for the last picture of article Part I
+Photo by Ben White on Unsplash
+
+
+
+# Plan principal
+
+Learning ClojureScript macro: a (not so) long journey
+
+I'm a developer currently learning Clojure and ClojureScript craft and I must say I really enjoy it. Compared to the other articles available on Medium, this one should reach a smaller audience as it targets developers who are curious about Clojure(Script) macro feature. The purpose of this article is to share my journey about my first concrete use of Clojure(Script) macro and also, it's a pleasure to share knowledge.
+
+1 - Rationale: Why does I needed to use macro?
+
+Usually, people don't expose in details their initial situation and sometimes, it confuses me. So here is the starting point of my journey.
+
+I'm working on a web application project building in Clojure(Script) and putting in place some unit test around the read/write functions to the state of the application. The application draw a simple diagram which can be see as a graph: I need to store nodes and links between them. These information are store in a ClojureScript atom, `appstate`, with the following data structure:
+```clojure
+{
+  :bubbles [bubble1 bubble2]
+  :links   [ [bubble1_id bubble2_id] ]
+}
+```
+It's an hashmap; the field `:bubbles` is associated with a vector of bubbles (which are hashmaps themselves) and the `:links` with a vector of couple of bubble ids. Next to the `appstate` variable, you have a bench of function to Create/Read/Update/Delete it (or at least reset it a clean state). So far so good.
+
+By writing the first test, I realised that I didn't like the way my functions were written. Let's take a look at the `add-bubble` function:
+```clojure
+(defn add-bubble! [bubble]
+  (swap! appstate update :bubbles conj bubble))
+```
+As you can see, this function is straightforward: I call the `swap!` function to modify the `appstate` atom, I want to `update` the hashmap, access to the `:bubbles` field which contains a vector of bubbles, and finally append (with the `conj` function) the input argument `bubble` to this vector. I like to write tiny function, ease to understand, to reuse, that does only one thing: nice. But if you are a bit familiar with Functional Programming, maybe you notice that the `appstate` variable is not defined in this snippet, and if this code can be executed this means that the `appstate` variable is a global variable, and it is! It's fairly common in web application to use (at least) one global variable to store the current state of the application. Which means that even if the `add-bubble!` function seems pretty cute, it's not a pure function, oh my god.
+
+<stupefaction picture>
+
+If you're not really aware of what a pure function is, I would say roughly that it's a function whose the output depends only of its input values. It's not the case for `add-bubble!` as it read/write `appstate`: `appstate` can be in an arbitrary state before the call of `add-bubble!`.
+
+You would tell me "Come on, you can live with this code, it's not that dirty". True, `add-bubble!` does the job correctly. But to test this function, I will set the `appstate` to a given state and check this global variable after the run of the `add-bubble!`, it's not really as direct as testing the output of `add-bubble!`. Also what's happen if I run the tests in a background process and simultaneously developer the project with a REPL session, would the tests execution modify the current state of the application?
+
+As I didn't want to deal with these issues, I'd rather rewrite the functions. With pure functions, these questions simply disappear. For `add-bubble!`, I ended up with this:
+```clojure
+(defn- add-bubble [appstate bubble]
+  (update appstate :bubbles conj bubble))
+
+(defn add-bubble! [bubble]
+  (swap! appstate #(add-bubble % bubble)))
+```
+
+One pure function `add-bubble` and one function with side effect `add-bubble!` which use the pure version of itself to update the global application state `appstate`. It's a common convention to put a "bang" (exclamation mark) at the end of function with side effect in Clojure(Script). Instead of testing `add-bubble!` direct, I would test `add-bubble` which takes the application state and its argument(s) as input, and return a new application state.
+
+You would tell me "Will you write two functions for each one which modify the application state in order to be able to test them easily?". I'm afraid to say "Yes". This work is repetitive, error prone and boring, but the bang functions are necessary for the other part of the project, hum.
+
+But there is a good news: the bang functions follow a simple pattern in their construction. I would like to write a code which takes a pure function as input and generates the side effect function associate with it. It's not possible to do it with functions but, as you may guess, this is what macros are for: generate code.
+
+(Now I understand why people don't expose their initial situation, *sigh*.)
+

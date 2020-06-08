@@ -1,0 +1,333 @@
+ClojureScript Macros: A (Not So) Long Journey [Part II]
+
+The writing of Clojure/Script macro may seem as a wizard senior programming craft, but this article will show you that it's not the case. This is the second part of my journey to learn Clojure/Script macro and this article will deal with Clojure macro.
+
+#### Motivation
+
+In the [previous article of this serie](https://hackernoon.com/clojurescript-macros-a-not-very-long-journey-part-i-ljf332ie), I expose the issue I address, which is:
+```
+(defn- add-bubble [appstate bubble]
+  (update appstate :bubbles conj bubble))
+
+(defn add-bubble! [bubble]
+  (swap! appstate (fn [appstate_arg] (add-bubble appstate_arg bubble))))
+```
+
+In this snippet, I would like to write the macro, let say `BANG` which will take `add-bubble` as argument and generate the `add-bubble!` version of it.
+
+On my way to write the `BANG` ClojureScript macro, I thought it was a good idea to begin to write the Clojure version of it. Why? Because I like to go one step after another and also because as ClojureScript takes its origin from Clojure, from my experience, it's easier to get of solid basics and then to build from there rather than eagerly jump to the ClojureScript version of it. Also from my experience, I usually get more documentation from the root language than its derivative.
+
+#### Macro: the origin
+
+For this article, I was wondering: Where does this idea of macro was coming from? As Clojure is known to be a dialect of Lisp, the path was clear.
+Lisp was invented by [John McCarthy](https://en.wikipedia.org/wiki/John_McCarthy_(computer_scientist)) and its team in the late 1950s at MIT. In these years, FORTRAN was really the main programming language used on the early years of IBM machines. When McCarthy discovered the FORTRAN language, he was fascinated by the idea of writing programs with "algebraic" means. But as his main topic was Artificial Intelligence, he was also convinced of the need of a functional language which would allow to handle symbolic expressions. If you're insterested by the history of the birth of LISP language, I recommand you [this article of Herbert Stoyan](https://web.archive.org/web/20050405213907/http://www8.informatik.uni-erlangen.de/html/lisp/histlit1.html) where you'll get the history context of McCarthy's work as well as the competition of this time between the machine builder, the compiler builder and the research insterest (and funding). From this article, I quote:
+> Already in 1956 it was clear that one had to work with symbolic expressions to reach the goal of artificial intelligence. As the researchers already understood numerical computation would not have much importance. McCarthy, in his aim to express simple, short description parts by short language elements, saw the composition of algebraic sub-expressions as an ideal way to reach this goal.
+
+In [this related article still of Herbert Stoyan](https://web.archive.org/web/20041209025920/http://www8.informatik.uni-erlangen.de/html/lisp/mcc91.html), you can find a list of 24 new ideas for programming language (at this time) from McCarthy. I quote here some idea which are the essence of macro in my humble opinion:
+> (4) extensibility of programs (incremental compiler) and changeability of programs,
+> (10) possibilities for manipulating symbolic quantities.
+
+In the talk ["Clojure for Lisp Programmers"](https://www.youtube.com/watch?v=nDm-QDEXGEA), Rich Hickey, author of Clojure language, highlighted the similarities and differences between Clojure and Lisp. On the topic of macro, Clojure macros are similar to Common Lisp macros. One difference discussed during this talk is that, in Clojure you can really do symbolic programming. Rich Hickey described symbols as simple names. Until you don't need the value behind a name, you don't know if the name is bound a to value, or from where this potential value come from. While talking about Clojure macro, he said:
+> "macros are manipulating this name-world not this var-world"
+
+Finally, when I was looking for documentation about macro, I found documentation talking about "reader macro" which is something else than regular "macro". "Reader macros" are special syntax around Clojure source. For example, the use of quote, `'foo`, indicates to the Clojure reader to produce a the symbol `foo` and so doesn't try to look for the potential value behind the name "foo". For me the "reader macro" constitutes the bottom basics of the language, and in Clojure [the user cannot define new reader macros](https://clojure.org/guides/faq#reader_macros) whereas it is possible to do so in Lisp. So from here, the term "macro" will always refer to regular macro.
+
+#### Macro: "blur" definition
+
+In Clojure, macro are code that writes code. That's it. Thanks for coming... I'm joking.
+
+It's always simpler for me to look at a concrete example and then discuss about it. Let's look at the `when` macro provide by `clojure.core` namespace:
+```
+(source when)
+=> (defmacro when
+     "Evaluates test. If logical true, evaluates body in an implicit do."
+     {:added "1.0"}
+     [test & body]
+     (list 'if test (cons 'do body)))
+```
+
+At first sight, the definition of the `when` macro is very similar to the definition of a regular function except the use of the keyword `defmacro` instead of `def`. A rough scheme of a macro definition is:
+```
+(defmacro <macro-name>
+  <documentation-string>
+  <meta-data>
+  <argument-list>
+  <body>)
+```
+
+For completness, here is a simple example of the code generated by `when` on a simple example:
+```
+(macroexpand '(when true 42))
+=> (if true (do 42))
+```
+
+The `macroexpand` function is especially useful to check the generated code from a given macro. This definition of Clojure macro is far to be the generical formal one but I find the "learning by example" way really more understandable and enjoyable. From this first observation, some thoughts immerge.
+
+The first thing that is fundamentally different between macro code and regular code is that macro code is executed at compile time. Which means, before the translation of Clojure code to Java bytecode, the macros have to be *expanded* to get the terminal Clojure code which will be effectively translated to Java bytecode.
+
+The second main difference is that the arguments of macro are not evaluted: they remain symbols in the body of macro. In the subsequent part of this article, a particular emphasis on this point will be made.
+
+Macros are the tool by excellence [to do metaprogramming](https://en.wikipedia.org/wiki/Metaprogramming). Wikipedia gives the following definition of it:
+> Metaprogramming is a programming technique in which computer programs have the ability to treat other programs as their data.
+Clojure macro takes as input any Clojure data and generates arbitrary Clojure code: complete freedom is there.
+
+The talk ["Illuminated Macros"](https://www.youtube.com/watch?v=o75g9ZRoLaw) introduces Clojure macro as a hook to the compiler. As macros are executed at compile time and generates arbitrary Clojure code from any Clojure data, it's relevant to see macro as extension to the compiler: it allows the use of new syntax.
+
+#### Create the BANG macro
+
+If you want to learn Clojure macro, you can find really high quality material online. I cite only those that caught my attention:
+ * [Writing Macros -- Clojure for the Brave and True](https://www.braveclojure.com/writing-macros/)
+ * [Macros -- Clojure from the ground up](https://aphyr.com/posts/305-clojure-from-the-ground-up-macros)
+ * [Macros -- The Joy of Clojure](https://github.com/clojurians-org/clojure-ebook-2/blob/master/The%20Joy%20of%20Clojure%2C%202nd%20Edition.pdf)
+
+With only one of these resources, you'll feel fluent to write Clojure macro by the end of the day. By learning it, the biggest difficulty for me was to understand when to keep a symbol as is instead of taking it's value in the body of a macro.
+
+In my personnal use case, I want to use macro to generate the side effect version of a function which change the state of my application (cf the snippet at the top of this article). To achieve this, here is first attempt:
+```
+(defmacro BANG
+  "Define the side-effect version of a given function 'func-name'"
+  [func-name]
+  (let [func-name-banged (symbol (str func-name "!"))]
+    `(defn ~func-name-banged [~'arg]
+       (swap! appstate (fn [~'appstate_arg] (~func-name ~'appstate_arg ~'arg))))))
+```
+
+The development of macro is not as easy as developing regular code, that's why I usually use intensively the `macroexpand` function to check the macro result:
+```
+(macroexpand '(BANG add-bubble))
+;; => (def add-bubble!
+;;      (clojure.core/fn
+;;        ([arg]
+;;          (clojure.core/swap! core/appstate
+;;            (clojure.core/fn [appstate_arg]
+;;              (add-bubble appstate_arg arg))))))
+```
+
+As many provided Clojure instructions rely on macros, the result of `macroexpand` can be confusing. This is the case because `macroexpand` does recursively all macro expansions until getting builtin Clojure instructions. It maybe more readable to look at the result of `macroexpand-1` instead as it does only one step of the macro expansion:
+```
+(macroexpand-1 '(BANG add-bubble))
+;; => (clojure.core/defn add-bubble! [arg]
+;;      (clojure.core/swap! core/appstate
+;;        (clojure.core/fn [appstate_arg]
+;;          (add-bubble appstate_arg arg))))
+```
+
+The `(BANG add-bubble)` expanded correct the target function definition of `add-bubble!`: it works!
+
+To comment briefly the body of `BANG` macro, firstly you can see the binding of `func-name-banged` to `(symbol (str func-name "!"))`. The function `symbol` allows you to [create a symbol from a given string](https://stackoverflow.com/questions/2965622/how-do-you-construct-a-symbol-in-clojure). In Clojure, a Symbol is bound or not to a Var, so basically to a value. In this case, `func-name-banged` just stores a symbol with the name "add-bubble!":
+```
+(symbol (str "add-bubble" "!"))
+;; => add-bubble!
+(type (symbol (str "add-bubble" "!")))
+;; => clojure.lang.Symbol
+(name (symbol (str "add-bubble" "!")))
+;; => "add-bubble!"
+(type (name (symbol (str "add-bubble" "!"))))
+;; => java.lang.String
+```
+
+Secondly, you can see the use of the curious notation `~'arg`, the juxtaposition of `~` and `'`. I use the syntax-quote operator, \` (backtick), in the macro body. Because of that, in the syntax-quoted form, every symbol will be auto-qualified: the namespace of symbol will be automatically prepend to the symbol if its definition is found, else by the current namespace where the macro expands. In my case, `arg` is an argument of the prototype a the new function `add-bubble!`, so I want it to stay as is. The use of `arg` without precaution will expand to `core/arg` which is not the desired result:
+```
+(macroexpand `arg)
+;; => core/arg
+```
+I won't get deeper here to the details of macro construction, but to solve this issue I used successively the quote operator, `'`, and the unquote operator, `~`:
+```
+(macroexpand `'arg)
+;; => (quote core/arg)
+(macroexpand `~'arg)
+;; => arg
+```
+If you're interested to master the craft of creating macro, you should read one of the links I gave in the beginning of this section.
+
+TODO: talk about the autogem symbol which does the trick and is the usual way to deal with it
+
+The current definition of `BANG` macro works perfectly for the `add-bubble` function, but its not generic enough for my application. I have other functions which have different number of argument, also named `arity` in Clojure. The `add-bubble!` function need only one argument, the bubble to add to the global state, but it would not be that simple for `update-bubble` for example, as it takes a bubble-id and an hashmap of attributes to update for a given bubble.
+
+The big question here is to find mechanism to get information about the input function to the macro to typically get its signature.
+
+#### n-arity BANG macro
+
+A really interesting feature of Clojure to me is the accessibility to metadata information. Every time you define a variable through `def`, some metadata is automatically attach to this variable. The [official documentation](https://clojure.org/reference/special_forms) describes the standard information that are defined and their meaning. You can inspect these metadata with `meta` function:
+```
+(type (var add-bubble))
+;; => clojure.lang.Var
+(meta (var add-bubble))
+;; => {:private true,
+;;     :arglists ([appstate bubble]),
+;;     :line 12,
+;;     :column 1,
+;;     :file ".../clojurescript macro not so long journey/part2/appstate/src/appstate.clj",
+;;     :name add-bubble,
+;;     :ns #namespace[core]}
+```
+
+You can call `meta` only on a Var value and to do so, you just have to call `var` function on the symbol of interest.
+
+What really interested me in metadata data information is the `:arglists` field as it gives you the list of input argument for a given function, exactly what I need to handle function of any arity by the `BANG` macro. All my pure update function begin with `appstate` in their signature, so I'm only interested by the rest of it:
+```
+(-> add-bubble var meta :arglists first rest)
+;; => (bubble)
+```
+
+Voila, now I just need to update the `BANG` macro, and we'll be ready to wrap up everything:
+```
+(defmacro BANG
+  "Define the side-effect version of a given function 'func-name'"
+  [func-name]
+  (let [func-name-banged (symbol (str func-name "!"))
+        func-var (var func-name)
+        arg-list (-> func-var meta :arglists first rest)]
+    `(defn ~func-name-banged ~@arg-list
+       (swap! appstate (fn [~'appstate_arg] (~func-name ~'appstate_arg ~@arg-list))))))
+```
+
+But when I compiled this macro, I get a weird and mysterious error message:
+> 1. Caused by java.lang.RuntimeException
+>    Unable to resolve var: func-name in this context
+
+For an unknown reason, I cannot call the `var` function in a macro definition. After tinkering the code for a moment, I still got more error just as mysterious as each other. At some point, I understand my vision of the puzzle was not complete, my reading was not sufficient to overcome this difficulty, so I had to dig deeper or ask for help.
+
+Some moment later, I found [this question on stackoverflow](https://stackoverflow.com/questions/51604260/how-to-write-an-clojure-macro-to-get-vars-value) which were relative to my issue.
+
+
+StackOverflow post donnant un exemple d'utilisation de resolve (3)
+https://stackoverflow.com/questions/51604260/how-to-write-an-clojure-macro-to-get-vars-value
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+2 - How to learn a new think
+
+Citation:
+> This is painfully true when it comes to the official docs, which seem to be written for machines rather than humans,
+https://lambdaisland.com/blog/25-05-2017-simple-and-happy-is-clojure-dying-and-what-has-ruby-got-to-do-with-it
+
+pour aller plus loin autour des macros :
+Illuminated Macros -- https://www.youtube.com/watch?v=o75g9ZRoLaw
+
+"Le saut vers l'inconnu"
+
+Turing aurait inventer les macros dans son article "On computable numbers, with an application to the entscheidungsproblem"
+
+
+Documentation Eric Normand:
+"You can change the value of a Var. And we use that all the time while we're doing interactive development."
+https://purelyfunctional.tv/guide/clojure-concurrency/#var
+
+Les macros
+
+I read things here and there
+
+Motivater par le contexte, et vous avez entendu parler d'un moyen de réduire nos soucis : foncer sur la construction de toy code! Practice makes perfect. Mais par où commencer ?
+Citation : Sur internet on trouve de tout, sauf ce dont on a besoin. -- dixit myself
+La vie d'un programme contenporain c'est beaucoup de recherche sur internet : offical/informal documentation, book, article, forum, archive de discution, archive de groupe google, chat sur Slack et qui ne connait pas StackOverflow. Si le sujet qui vous intéresse n'a pas de hype, il est susceptible que vous galériez à réussir (rapidement) ce que vous entrenez. Mais ne vous découragez pas, c'est cette capacité d'autodidacte que vous devez entretenir sur le long terme ;)
+La première moitié du chapitre 8 de Clojure for the Brave and True appelé "Writing Macros" est suffisante pour commencer à écrire les première macros. Ce livre est vraiment plaisant à lire, pédagogique, il est clairement la référence pour commencer à apprendre à programmer en Clojure.
+
+La documentation officielle est détaillé, mais les choses sont expliqués parfois de façon convolted et pas assez straight forward. Des schéma ou cas d'usage auraient été les bienvenus.
+
+3 - Mise en place d'une macro Clojure : l'utilisation des métadata pour gérer les différents arity des functions à wrapper.
+Parler du problème de la concaténation du nom d'une variable référencé par un symbol avec une string arbitraire pour créer un nouveau symbol (qui sera d'ailleurs thread-bound).
+L'exploration des intertins (guts) de clojure : les clojure.lang.Var et clojure.lang.Symbol. Les symboles peuvent être converti en Var et c'est grâce au Var qu'on peut demander des renseignements au compilateur en particulier les metadatas.
+Pour des Var representant des functions (ex: ...), le compilateur connaît le prototype de la function et donc l'arity de cette fonction. Ce qui est exactement ce que je cherche dans le cadre de génération de fonction wrapper.
+Parler aussi de la function 'resolve' et des variables qui sont décrites comme thread-bound (ma vision du thread-bound correspondant au scope d'une function, d'un let, d'une loop, d'un for dans les list-comprehensive...). Impossibilité d'utiliser la fonction var sur des variables qui sont thread-bound. L'appelle de la fonction meta n'est possible que sur des Var, d'où la nécessité de convertir des Symbol en Var.
+
+L'utilisation de la function var sur un symbol "thread-bound" déclenche une erreur du type "clojure macro error Unable to resolve var: <symbol_name> in this context"
+
+4 - Migration de cette macro vers ClojureScript : implémentation de core est différente, des adaptations sont de rigueur. Certaines fonctions sont faites pour être utilisée dans les macros uniquement : 'resolve' et 'resolve-var'
+Le compilateur ClojureScript est aussi plus permissif : appel de functions avec pas le bon nombre d'argument, ben ça pas grave, on va mettre nil et on verra bien ce qui se passe.
+
+5 - Conclusion : les macros Clojure(Script) sont puissante, elles permettent d'écrire du code à notre place. Certains disent même qu'elles permettent la création d'un Domain Specific Language (DSL). But the learning curve is pretty steep. J'espère que cette article
+The whole journey for my first Clojure(Script) macro takes only 2 days to get exactly what I want. If you look at the amount of produce code it may seems ridiculous, even if it's maybe not a good measure. But what amaze me is that after these 2 days I feel really confident how writing and reading macro whereas I thought macro topic were a mysterious and very hasle topic reserved for wizard programmer. Thanks to the high quality resource out there, in that it's not the case anymore. What a time to be alive! (#2MinutePapers)
+
+Big thank à Thomas Heller (alias thheller sur Slack) qui est le créateur du build system shadow-cljs: membre très actifs sur le chat.
+
+Epilogue - There is still another way
+Autre possibilité, utilisé la macro cljs.core/with-redefs pour redéfinir la variable bubble.state/appstate lors des tests. La macro est disponible en Clojure (https://clojure.github.io/clojure/clojure.core-api.html#clojure.core/with-redefs) et en ClojureScript (https://cljs.github.io/api/cljs.core/with-redefs). Mais ça sera peut être pour un prochain article.
+StackOverflow post sur le sujet https://stackoverflow.com/questions/31157889/clojure-unit-testing-with-redefs
+Voir aussi la vidéo de James Trunk (author of the youtube channel Misophistful) sur la mise en place d'une base de donnée Datomic qui montre utilisation de with-derefs pour tester localement une base de donnée datomic: https://youtu.be/ao7xEwCjrWQ
+The solution described in this article to facilitate unit testing maybe already the old-fashioned of doing it but I'm happy to share my journey and I hope you still get something out of it.
+
+To begin a new language, feature, anything, it's really useful to try to answer to well defined questions (How I Supercharged Learning Clojure through Gamification - Mey Beisaron -- https://www.youtube.com/watch?v=mrXDc4e0e6s)
+
+
+
+
+Links:
+
+Les chapitres 6, 7 et 8 de clojure for the brave and true (2)
+https://www.braveclojure.com/clojure-for-the-brave-and-true/
+
+Testing Clojure macros with metadata : avoid callback hell, and then channel hell by writing macro. aussi info sur les gensyms (2)
+https://blog.developer.atlassian.com/testing-clojure-macros/
+
+Hackernoon : un retour d'expérience qui réuni beaucoup de régle à savoir sur les macros (2)
+https://hackernoon.com/clojure-macros-lessons-from-unspoken-symbols-c4945d8ed8bf
+
+Les pages de documentations officiel concernant le Var, Symbol (2)
+https://clojure.org/reference/special_forms  (ici il parle de "thread-bound" var dans la description de def)
+https://clojure.org/reference/vars
+https://clojure.org/reference/reader
+
+StackOverflow post donnant un exemple d'utilisation de resolve (3)
+https://stackoverflow.com/questions/51604260/how-to-write-an-clojure-macro-to-get-vars-value
+
+StackOverflow: solution pour un nouveau symbol à partir d'une string arbitraire associé à aucune Var (3)
+https://stackoverflow.com/questions/2965622/how-do-you-construct-a-symbol-in-clojure
+
+ClojureScript: Differences from Clojure -- les sections sur les macros et special form (pour var) sont très éclairantes (4)
+https://clojurescript.org/about/differences#_macros
+https://clojurescript.org/about/differences#_special_forms
+
+L'utilisation d'un reader conditionals (in a .cljc file) to choose the function appropriate for each compiler's evaluation environment (4)
+https://cljs.github.io/api/cljs.core/defmacro
+
+From Slack with thheller from #clojurescript -- usage of cljs.analyzer/resolve-var instead of cljs.core/resolve in macro definition (4)
+
+Documentation of cljs.analyzer/resolve-var (4)
+http://bensu.github.io/clojurescript-docs/cljs.analyzer-api.html#cljs.analyzer/resolve-var
+
+StackOverflow: Usage example of cljs.analyzer/resolve-var (4)
+https://stackoverflow.com/questions/37078457/how-to-access-compile-time-cljs-var-metadata-from-a-clj-macro/37086436#37086436
+
+Explication sur les Vars ou en tout cas une illustration de l'utilisation:
+https://blog.michielborkent.nl/2017/05/25/inline-def-debugging/
+
+Quotation:
+"A language that doesn't affect the way you think about programming is not worth knowing." -- Alan Perlis
+
+DONE: chercher ce que c'est réellement des variables "thread-bound" et une façon simple de l'expliquer.
+The joy of code, section 10.6 Vars and dynamic binding
+
+TODO: trouver des images illustrants les différentes étapes et état d'esprit du process.
+
+Testing UI component
+DONE: https://dev.solita.fi/2017/04/10/making-software-testing-easier-with-clojure.html
+
+DONE: https://code.thheller.com/blog/shadow-cljs/2019/10/12/clojurescript-macros.html  (4)
+ClojureScript Macros
+
+
+
+
+Date:
+1958 : invention du lisp
+-> question : est-ce aussi l'invention des macros à la clojure? Est-ce que les macros que Turing avait inventé correspondent aux macros utilisées en lisp?
+Les macros Clojure sont fortement inspiré des macros Common Lisp. Des subtilités subsistent au niveau de la résolution des symboles vers des variables.
+Rich hickey en parle dans une de ces premières présentations de Clojure à un public de LISP. The joy of clojure l'évoque des une référence de fin de page.
+> According to Christophe Grand (in a personal communication), “Awkwardness is good since it’s a strong signal to make the user aware he is drifting away from the true path to Clojure enlightenment.”
+(section 8.5.1 Anaphora)
+
+citation:
+"One of our difficulties will be the maintenance of an appropriate discipline, so that we do not lose track of what we are doing" - Turing - 1945

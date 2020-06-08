@@ -1,0 +1,88 @@
+# plan principal
+
+Historiquement, on dit que le lambda calcul n'est pas typé
+-> retracé les origines
+-> Est ce que ça concernait uniquement un modèle théorique ou est-ce qu'il y a eu une implémentation fonctionnel d'un langage entièrement non typé ?
+-> Dans tout les cas donné un exemple
+
+Les 4 paradigme de programmation communément admis
+https://www.youtube.com/watch?v=cgVVZMfLjEI
+
+Tous les langages ou presque sont typé, mais pas de la même façon. La matrice des systèmes de typage possible :
+fortement typé statiquement
+fortement typé dynamiquement
+faible typé statiquement
+faible typé dynamiquement
+
+Le pire des système de type : stringify type
+Un terme qui est devenu courant de nos jours (je trouve)
+
+Donné un exemple pour les différents catégories (même si pour le faiblement typé statiquement, ça va être compliqué : les types devraient plus être considéré comme des décorateurs plutôt qu'autre chose)
+
+Rust : type checker, mais pas typé statiquement
+Javascript : faiblement typé dynamiquement
+C, Java : fortement typé statiquement
+
+Regarder précisément ce que qu'il en ait pour des langages comme ADA, Haskell, Scheme
+
+Parlé du système de model de Elm (langage fortement typé statiquement) : c'est le type de bénéfice qu'on cherche à obtenir avec un système de type checking. Les fuzzy test : génération de test aléatoire piloté par les constraintes de type.
+
+Qu'en est il pour Clojure
+ - langage fortement typé dynamiquement
+ - les contraintes sur la forme et possible opérations réalisable sur les données explicitées via spec
+
+Ce genre de chose est particulière adaptées pour les systèmes qui s'occupent des données : stockage, transmission et communication. Par exemple les API rest des services web : description des JSON qui sont échangés entre plateforme. Les base de données : types associés à des colonnes dans une table SQL.
+L'intérêt de ce type de plateforme/service n'est pas centré autour du calcul, mais bien autour de la communication de donnée. Les centres d'intérêts sont différents:
+Clojure est reconnu pour être un langage plutôt orienté data car le soin apporté par le langage dans la description des données n'est généralement pas répandu dans les autres langages de programmation. Dans Clojure le calcul semble être un aspect secondaire : un "after thought"
+vidéo : A Case for Clojure : https://www.youtube.com/watch?v=7d53ABMqpqU
+
+Spécification de l'interfaces des web services Amazon AWS. Implémentation dans différent langage simple, consommation des données simples à implémenter une fois que les spécifications du services sont disponibles : data first.
+Une fois les spécificaitons données, le boilerplate code spécifique à chaque langage peut être généré automatiquement : peu d'intelligence dans cette partie du process.
+
+TODO: créer un outil pour explorer efficacement son historique youtube : "qu'est-ce que j'ai regardé il y a 6 mois"
+objectif: retrouvé la vidéo qui parle des interfaces AWS, le problème qu'il avait : écrit une interface pour chaque langage qui peut intéragir avec le service. Ce qu'ils n'ont pas fait. Ils ont préféré à raison juste expliciter les functions et les types de arguments de ces fonctions et aussi la gueule des données retours.
+(Projet github autour des aws web service)
+Peut être https://github.com/awsdocs/aws-doc-sdk-examples
+Mais vraiment retrouvé la vidéo qui parle des web service AWS !!!
+
+vidéo sur AWS :
+AWS, meet Clojure - David Chelimsky : https://www.youtube.com/watch?v=ppDtDP0Rntw
+
+
+les origines :
+form
+s-expression : https://en.wikipedia.org/wiki/S-expression
+
+A revoir:
+The future of programming : https://www.youtube.com/watch?v=ecIWPzGEbFc
+
+A voir :
+Functional Programming in 40 minutes : https://www.youtube.com/watch?v=0if71HOyVjY
+
+Retrouver :
+la vidéo qui parle de l'origine des opération "car" et "cdr"
+C'est une vidéo de "Kevlin Henney" de toute façon
+ça fera l'affaire : Procedural Programming: It’s Back? It Never Went Away - Kevlin Henney : https://www.youtube.com/watch?v=mrY6xrWp3Gs
+
+
+A lire:
+Theory of Types Russell (1908)
+
+source : https://turing100.acm.org/lambda_calculus_timeline.pdf
+
+***************
+
+L'avantage d'utiliser un langage typé statiquement c'est qu'il y a des contrats
+clairement identifiable pour l'utilisation de telle ou telle fonction : l'API
+d'un code est clair.
+Alors que dans les langages typé dynamiquement, ce n'est pas si simple. Dans le
+pire des cas on doit lire le code pour savoir comment les arguments passés en entrée
+sont utilisés, où dans le meilleur des cas en Clojure il y a des conditions que
+les arguments doivent respectés pour que la fonction s'exécute.
+
+Néanmoins, dans le cas où le type est statique, les erreurs sont identifiées au moment
+de la compilation alors que dans le cas du type dynamique les erreurs sont visibles
+uniquement lors de l'exécution, le runtime. C'est le point qui est le plus souvent
+reproché aux langages typés dynamiquement.
+
+***************
