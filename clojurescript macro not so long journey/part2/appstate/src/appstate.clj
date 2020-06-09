@@ -68,30 +68,78 @@
 (-> add-bubble var meta :arglists first rest)
 ;; => (bubble)
 
+
+(macroexpand-1 '(BANG add-bubble))
+
+(def dummy-arg 42)
+
+(defn fn1 [arg]
+  (type arg))
+
+(fn1 dummy-arg)
+;; => java.lang.Long
+
+(defmacro macro1 [arg]
+  (type arg))
+
+(macro1 dummy-arg)
+;; => clojure.lang.Symbol
+
+(defn fn2 [arg]
+  (meta (resolve (symbol (name arg)))))
+
+(macroexpand '(defn fn2 [arg]
+                (meta (resolve (symbol (name arg))))))
+;; (def
+;;   fn2
+;;   (clojure.core/fn ([arg] (meta (resolve (symbol (name arg)))))))
+
+(fn2 dummy-arg)
+;; => java.lang.Long
+
+(defmacro dummy-m [arg]
+  (resolve arg))
+
+(macroexpand '(defmacro dummy-m [arg]
+                (resolve arg)))
+;; (do
+;;   (clojure.core/defn dummy-m ([&form &env arg] (resolve arg)))
+;;   (. #'m (setMacro))
+;;   #'m)
+
+(dummy-m dummy-arg)
+;; => #'core/dummy-arg
+
+;; (macro2 dummy-arg)
+;; ;; => clojure.lang.Symbol
+
+(require '[clojure.repl])
+(clojure.repl/doc ns-resolve)
+
+(def x)
+(meta (var x))
+
+(defmacro dummy-m1 [arg]
+  (prn &form))
+
+(dummy-m1 (+ 3 2 doesn't-exist))
+
+(defmacro dummy-m2 []
+  (prn &env))
+
+(dummy-m2)
+
+;; toto
+
 (defmacro BANG
   "Define the side-effect version of a given function 'func-name'"
   [func-name]
   (let [func-name-banged (symbol (str func-name "!"))
-        func-var func-name
-        ;; arg-list (-> func-var meta :arglists first rest)
+        func-var (resolve func-name)
+        arg-list (-> func-var meta :arglists first rest)
         ]
-    (type func-var)
-    ;; `(defn ~func-name-banged ~@arg-list
-    ;;    (swap! appstate (fn [~'appstate_arg] (~func-name ~'appstate_arg ~@arg-list))))
+    `(defn ~func-name-banged [~@arg-list]
+       (swap! appstate (fn [~'appstate_arg] (~func-name ~'appstate_arg ~@arg-list))))
     ))
 
 (macroexpand-1 '(BANG add-bubble))
-
-(def arg-example 42)
-
-(defn f-example [arg]
-  (type arg))
-
-(f-example arg-example)
-;; => java.lang.Long
-
-(defmacro m-example [arg]
-  (type arg))
-
-(m-example arg-example)
-;; => clojure.lang.Symbol

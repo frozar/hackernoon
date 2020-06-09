@@ -162,7 +162,7 @@ A really interesting feature of Clojure to me is the accessibility to metadata i
 ;;     :ns #namespace[core]}
 ```
 
-You can call `meta` only on a Var value and to do so, you just have to call `var` function on the symbol of interest.
+You can call `meta` only on a value of type clojure.lang.Var and to do so, you just have to call `var` function on the symbol of interest.
 
 What really interested me in metadata data information is the `:arglists` field as it gives you the list of input argument for a given function, exactly what I need to handle function of any arity by the `BANG` macro. All my pure update function begin with `appstate` in their signature, so I'm only interested by the rest of it:
 ```
@@ -188,16 +188,87 @@ But when I compiled this macro, I get a weird and mysterious error message:
 
 For an unknown reason, I cannot call the `var` function in a macro definition. After tinkering the code for a moment, I still got more error just as mysterious as each other. At some point, I understand my vision of the puzzle was not complete, my reading was not sufficient to overcome this difficulty, so I had to dig deeper or ask for help.
 
-Some moment later, I found [this question on stackoverflow](https://stackoverflow.com/questions/51604260/how-to-write-an-clojure-macro-to-get-vars-value) which were relative to my issue.
+Some moment later, I found [this question on stackoverflow](https://stackoverflow.com/questions/51604260/how-to-write-an-clojure-macro-to-get-vars-value) which is relative to my issue. This question is about getting a var value in the body of a macro. Especially, the given answer used a `resolve` I were not aware of. Let's take a look at the documentation of this function:
+```
+(doc resolve)
+;; => clojure.core/resolve
+;;      ([sym] [env sym])
+;;        same as (ns-resolve *ns* symbol) or (ns-resolve *ns* &env symbol)
+(doc ns-resolve)
+;; => clojure.core/ns-resolve
+;;      ([ns sym] [ns env sym])
+;;        Returns the var or Class to which a symbol will be resolved in the
+;;        namespace (unless found in the environment), else nil.  Note that
+;;        if the symbol is fully qualified, the var/Class to which it resolves
+;;        need not be present in the namespace.
+```
 
+The `resolve` function look up a Var in the current namespace from a given Symbol. In fact, this is what I needed for my `BANG` macro. To convince myself of the good behavior of the this function, I prefer to write of dummy example:
+```
+(def dummy-arg 42)
+(defmacro dummy-m [arg]
+  (resolve arg))
 
-StackOverflow post donnant un exemple d'utilisation de resolve (3)
-https://stackoverflow.com/questions/51604260/how-to-write-an-clojure-macro-to-get-vars-value
+(macroexpand '(defmacro dummy-m [arg]
+                (resolve arg)))
+;; => (do
+;;      (clojure.core/defn dummy-m ([&form &env arg] (resolve arg)))
+;;      (. #'m (setMacro))
+;;      #'m)
 
+(dummy-m dummy-arg)
+;; => #'core/dummy-arg
+```
 
+What is interesting is the above snippet is the expansion of the definition of the `dummy-m` macro. You can see the use of special arguments `&form` and `&env`. You can use `&form` to see how a macro has been called:
+```
+(defmacro dummy-m1 [arg]
+  (prn &form))
 
+(dummy-m1 (+ 3 2 doesn't-exist))
+;; => (dummy-m1 (+ 3 2 doesn't-exist))
+```
 
+The `&env` variable let you inspect the current compiler environment for the macro:
+```
+(defmacro dummy-m2 []
+  (prn &env))
 
+(dummy-m2)
+;; => nil
+```
+
+By default, the `&env` variable is nil but I you want to learn for about it, I recommand [this article](http://blog.jayfields.com/2011/02/clojure-and.html). Anyway, the only point I would like to highlight here is that Clojure macro is really a hook to the compiler and this tiny examples give you some hint on how you can tackle this topic.
+
+So finally, to fix the `BANG` macro, I have to use `resolve` instead of `var`:
+```
+(defmacro BANG
+  "Define the side-effect version of a given function 'func-name'"
+  [func-name]
+  (let [func-name-banged (symbol (str func-name "!"))
+        func-var (resolve func-name)
+        arg-list (-> func-var meta :arglists first rest)
+        ]
+    `(defn ~func-name-banged [~@arg-list]
+       (swap! appstate (fn [~'appstate_arg] (~func-name ~'appstate_arg ~@arg-list))))
+    ))
+
+(macroexpand-1 '(BANG add-bubble))
+;; => (clojure.core/defn
+;;     add-bubble!
+;;     [bubble]
+;;     (clojure.core/swap!
+;;      core/appstate
+;;      (clojure.core/fn [appstate_arg] (add-bubble appstate_arg bubble))))
+```
+
+Finally I get it right, oufff.
+
+#### Conclusion
+
+Clojure macro feature is really powerful, it allows you generate arbitrary code from Clojure data, but as you see through this article, it can be a bit sporty to get it work, the way you want. Except for the `resolve` trick, there really good documentation around this feature in different books and as I said, after reading one of this documentation you'll be comfortable to write your own macro by the end of the day.
+
+But wait a minute, the title of this article is about ClojureScript macro, not Clojure macro! It's true, the journey is not finish yet, but the detour through Clojure macro was really instructive personally but also necessary to tackle serenely the ClojureScript macro, because there some subtle differences that I go though in the next and last article of this serie.
 
 
 
