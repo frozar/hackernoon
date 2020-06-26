@@ -39,11 +39,11 @@ In Clojure, macro are code that writes code. That's it. Thanks for coming... I'm
 It's always simpler for me to look at a concrete example and then discuss about it. Let's look at the `when` macro provide by `clojure.core` namespace:
 ```
 (source when)
-=> (defmacro when
-     "Evaluates test. If logical true, evaluates body in an implicit do."
-     {:added "1.0"}
-     [test & body]
-     (list 'if test (cons 'do body)))
+;; => (defmacro when
+;;      "Evaluates test. If logical true, evaluates body in an implicit do."
+;;      {:added "1.0"}
+;;      [test & body]
+;;      (list 'if test (cons 'do body)))
 ```
 
 At first sight, the definition of the `when` macro is very similar to the definition of a regular function except the use of the keyword `defmacro` instead of `def`. A rough scheme of a macro definition is:

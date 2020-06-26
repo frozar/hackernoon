@@ -18,11 +18,24 @@
 (defmacro BANG
   "Define the side-effect version of a given function 'func-name'"
   [func-name]
-  (let [func-name-banged (symbol (str func-name "!"))]
-    `(defn ~func-name-banged [~'arg]
-       (swap! appstate (fn [~'appstate_arg] (~func-name ~'appstate_arg ~'arg))))))
+  (let [func-name-banged (symbol (str func-name "!"))
+        arg-symbol (gensym)
+        appstate-arg-symbol (gensym)]
+    `(defn ~func-name-banged [~arg-symbol]
+       (swap! appstate (fn [~appstate-arg-symbol] (~func-name ~appstate-arg-symbol ~arg-symbol))))))
 
 (macroexpand-1 '(BANG add-bubble))
+;; => (clojure.core/defn add-bubble! [G__7657]
+;;      (clojure.core/swap! core/appstate
+;;        (clojure.core/fn [G__7658]
+;;          (add-bubble G__7658 G__7657))))
+;; => (clojure.core/defn add-bubble! [arg]
+;;      (clojure.core/swap! core/appstate
+;;        (clojure.core/fn [appstate-arg]
+;;          (add-bubble appstate-arg arg))))
+;; => (clojure.core/defn add-bubble! [arg] (clojure.core/swap! core/appstate (clojure.core/fn [appstate_arg] (add-bubble appstate_arg arg))))
+;; => (clojure.core/defn add-bubble! [core/arg-symbol] (clojure.core/swap! core/appstate (clojure.core/fn [appstate_arg] (add-bubble appstate_arg core/arg-symbol))))
+;; => (clojure.core/defn add-bubble! [arg] (clojure.core/swap! core/appstate (clojure.core/fn [appstate_arg] (add-bubble appstate_arg arg))))
 ;; => (clojure.core/defn add-bubble! [arg]
 ;;      (clojure.core/swap! core/appstate
 ;;        (clojure.core/fn [appstate_arg]
@@ -33,8 +46,8 @@
 ;;      (clojure.core/fn
 ;;        ([arg]
 ;;          (clojure.core/swap! core/appstate
-;;            (clojure.core/fn [appstate_arg]
-;;              (add-bubble appstate_arg arg))))))
+;;            (clojure.core/fn [appstate-arg]
+;;              (add-bubble appstate-arg arg))))))
 
 (symbol (str "add-bubble" "!"))
 ;; => add-bubble!
@@ -135,11 +148,28 @@
   "Define the side-effect version of a given function 'func-name'"
   [func-name]
   (let [func-name-banged (symbol (str func-name "!"))
+        appstate-arg-symbol (symbol "appstate-arg")
         func-var (resolve func-name)
-        arg-list (-> func-var meta :arglists first rest)
-        ]
+        arg-list (-> func-var meta :arglists first rest)]
     `(defn ~func-name-banged [~@arg-list]
-       (swap! appstate (fn [~'appstate_arg] (~func-name ~'appstate_arg ~@arg-list))))
+       (swap! appstate (fn [~appstate-arg-symbol] (~func-name ~appstate-arg-symbol ~@arg-list))))
     ))
 
 (macroexpand-1 '(BANG add-bubble))
+;; => (clojure.core/defn add-bubble! [bubble]
+;;      (clojure.core/swap! core/appstate
+;;        (clojure.core/fn [appstate-arg]
+;;          (add-bubble appstate-arg bubble))))
+
+'(+ 2 3)
+
+(clojure.repl/doc var)
+;; => var
+;;    (var symbol)
+;;    Special Form
+;;    The symbol must resolve to a var, and the Var object
+;;    itself (not its value) is returned. The reader macro #'x expands to (var x).
+;;
+;;    Please see http://clojure.org/special_forms#var
+;;    The symbol must resolve to a var, and the Var object
+;;    itself (not its value) is returned. The reader macro #'x expands to (var x).
